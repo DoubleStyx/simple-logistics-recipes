@@ -12,17 +12,21 @@ for name, item in pairs(data.raw["item"]) do
     end
 end
 
-local function is_raw_material(ingredient_name)
+local function is_raw_material(ingredient_name, ingredient_type)
     local raw_materials = {
-        ["iron-ore"] = true,
-        ["copper-ore"] = true,
-        ["coal"] = true,
-        ["stone"] = true,
-        ["oil"] = true,
-        ["ammonia"] = true,
-        ["uranium-ore"] = true
+        ["item"] = {
+            ["iron-ore"] = true,
+            ["copper-ore"] = true,
+            ["stone"] = true,
+            ["coal"] = true,
+            ["uranium-ore"] = true,
+        },
+        ["fluid"] = {
+            ["water"] = true,
+            ["crude-oil"] = true,
+        }
     }
-    return raw_materials[ingredient_name] or false
+    return raw_materials[ingredient_type] and raw_materials[ingredient_type][ingredient_name] or false
 end
 
 local complexity_cache = {}
@@ -65,21 +69,20 @@ end
 
 local cost_cache = {}
 
-local function calculate_raw_material_cost(ingredient_name, amount, visited)
-    log("uwu")
+local function calculate_raw_material_cost(ingredient_name, amount, ingredient_type, visited)
     visited = visited or {}
     
     if visited[ingredient_name] then
         return 0
     end
     visited[ingredient_name] = true
-    
+
     if cost_cache[ingredient_name] then
-        visited[ingredient_name] = nil  -- Clean up before returning
+        visited[ingredient_name] = nil
         return cost_cache[ingredient_name] * amount
     end
 
-    if is_raw_material(ingredient_name) then
+    if is_raw_material(ingredient_name, ingredient_type) then
         cost_cache[ingredient_name] = 1
         visited[ingredient_name] = nil
         return amount
@@ -96,8 +99,9 @@ local function calculate_raw_material_cost(ingredient_name, amount, visited)
     local total_cost = 0
 
     for _, ingredient in pairs(recipe.ingredients) do
-        local ingredient_amount = (ingredient.amount or (ingredient.amount_min + ingredient.amount_max) / 2) or 1
-        total_cost = total_cost + calculate_raw_material_cost(ingredient.name, ingredient_amount, visited)  -- Pass 'visited' here
+        local ingredient_amount = ingredient.amount or (ingredient.amount_min + ingredient.amount_max) / 2 or 1
+        local ingredient_type = ingredient.type or "item"
+        total_cost = total_cost + calculate_raw_material_cost(ingredient.name, ingredient_amount, ingredient_type, visited)
     end
 
     local output_amount = 1
@@ -110,7 +114,7 @@ local function calculate_raw_material_cost(ingredient_name, amount, visited)
     total_cost = total_cost / output_amount
 
     cost_cache[ingredient_name] = total_cost
-    visited[ingredient_name] = nil  -- Clean up before returning
+    visited[ingredient_name] = nil
     return total_cost * amount
 end
 
@@ -120,12 +124,14 @@ local function get_most_complex_ingredient(recipe)
     local winner_complexity = nil
 
     for _, ingredient in pairs(recipe.ingredients) do
-        local comp = calculate_complexity(ingredient.name)
+        local ingredient_name = ingredient.name or ingredient[1]
+        local ingredient_type = ingredient.type or "item"
+        local comp = calculate_complexity(ingredient_name)
 
         if not winner_complexity or 
            comp.depth > winner_complexity.depth or
            (comp.depth == winner_complexity.depth and comp.quantity > winner_complexity.quantity) then
-            winner = ingredient
+            winner = {name = ingredient_name, type = ingredient_type}
             winner_complexity = comp
         end
     end
@@ -146,14 +152,12 @@ end
 
 local function modify_recipe(recipe, winner, scaled_quantity)
     recipe.ingredients = {
-        {type = "item", name = winner.name, amount = scaled_quantity}
+        {type = winner.type, name = winner.name, amount = scaled_quantity}
     }
 end
 
 for _, item in pairs(production_and_logistics_items) do
-    log("Fetching recipe...")
     local recipe = data.raw["recipe"][item.name]
-    log("Recipe: " .. item.name)
     if recipe and recipe.ingredients then
         local winner = get_most_complex_ingredient(recipe)
         if winner then
