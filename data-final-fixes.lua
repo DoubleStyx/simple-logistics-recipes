@@ -12,30 +12,37 @@ for name, item in pairs(data.raw["item"]) do
     end
 end
 
+local raw_materials = {
+    ["iron-ore"] = true,
+    ["copper-ore"] = true,
+    ["coal"] = true,
+    ["stone"] = true,
+    ["uranium-ore"] = true,
+    ["crude-oil"] = true,
+    ["water"] = true,
+    ["wood"] = true,  -- Add other base raw materials as needed
+}
+
 local function is_raw_material(ingredient_name, ingredient_type)
-    if ingredient_type == "item" then
-        return not data.raw["recipe"][ingredient_name]
-    elseif ingredient_type == "fluid" then
-        return not data.raw["recipe"][ingredient_name]
-    end
-    return false
+    return raw_materials[ingredient_name] == true
 end
 
-local function calculate_rcr(ingredient_name, ingredient_type, visited)
+local function calculate_total_raw_cost(item_name, item_type, visited)
     visited = visited or {}
-    if visited[ingredient_name] then
+    local key = item_type .. ":" .. item_name
+    if visited[key] then
         return 0
     end
-    visited[ingredient_name] = true
+    visited[key] = true
 
-    if is_raw_material(ingredient_name, ingredient_type) then
-        visited[ingredient_name] = nil
+    if is_raw_material(item_name, item_type) then
+        visited[key] = nil
         return 1
     end
 
-    local recipe = data.raw["recipe"][ingredient_name]
-    if not recipe then
-        visited[ingredient_name] = nil
+    local recipe = data.raw["recipe"][item_name]
+    if not recipe or not recipe.ingredients then
+        visited[key] = nil
         return 1
     end
 
@@ -45,8 +52,10 @@ local function calculate_rcr(ingredient_name, ingredient_type, visited)
         local amount = ingredient.amount
             or (ingredient.amount_min + ingredient.amount_max) / 2
             or 1
-        local sub_rcr = calculate_rcr(ingredient.name, ingredient.type or "item", visited)
-        total_raw_input = total_raw_input + amount * sub_rcr
+        local ing_name = ingredient.name or ingredient[1]
+        local ing_type = ingredient.type or "item"
+        local sub_cost = calculate_total_raw_cost(ing_name, ing_type, visited)
+        total_raw_input = total_raw_input + amount * sub_cost
     end
 
     local total_output = 1
@@ -56,32 +65,35 @@ local function calculate_rcr(ingredient_name, ingredient_type, visited)
         total_output = recipe.results[1].amount
     end
 
-    visited[ingredient_name] = nil
+    visited[key] = nil
 
     return total_raw_input / total_output
 end
 
-local function get_highest_rcr_ingredient(recipe)
-    local highest_rcr = -math.huge
+local function get_most_expensive_ingredient(recipe)
+    local highest_raw_cost = -math.huge
     local selected_ingredient = nil
 
     for _, ingredient in pairs(recipe.ingredients) do
-        local ingredient_name = ingredient.name or ingredient[1]
-        local ingredient_type = ingredient.type or "item"
-        local rcr = calculate_rcr(ingredient_name, ingredient_type)
+        local ing_name = ingredient.name or ingredient[1]
+        local ing_type = ingredient.type or "item"
+        local raw_cost = calculate_total_raw_cost(ing_name, ing_type)
 
-        if rcr > highest_rcr then
-            highest_rcr = rcr
-            selected_ingredient = {name = ingredient_name, type = ingredient_type}
+        if raw_cost > highest_raw_cost then
+            highest_raw_cost = raw_cost
+            selected_ingredient = {name = ing_name, type = ing_type, raw_cost = raw_cost}
         end
     end
 
-    return selected_ingredient, highest_rcr
+    return selected_ingredient
 end
 
 
 
-local function modify_recipe(recipe, winner, scaled_quantity)
+
+local function modify_recipe(recipe, winner, total_item_raw_cost)
+    local scaled_quantity = math.ceil(total_item_raw_cost)
+
     local max_value = 65535
     scaled_quantity = math.min(scaled_quantity, max_value)
 
@@ -93,10 +105,11 @@ end
 for _, item in pairs(production_and_logistics_items) do
     local recipe = data.raw["recipe"][item.name]
     if recipe and recipe.ingredients then
-        local winner, highest_rcr = get_highest_rcr_ingredient(recipe)
+        local total_item_raw_cost = calculate_total_raw_cost(item.name, "item")
+
+        local winner = get_most_expensive_ingredient(recipe)
         if winner then
-            local scaled_quantity = math.ceil(highest_rcr)
-            modify_recipe(recipe, winner, scaled_quantity)
+            modify_recipe(recipe, winner, total_item_raw_cost)
         end
     end
 end
