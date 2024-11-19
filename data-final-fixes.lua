@@ -82,6 +82,9 @@ end
 
 
 local function modify_recipe(recipe, winner, scaled_quantity)
+    local max_value = 65535
+    scaled_quantity = math.min(scaled_quantity, max_value)
+
     recipe.ingredients = {
         {type = winner.type, name = winner.name, amount = scaled_quantity}
     }
