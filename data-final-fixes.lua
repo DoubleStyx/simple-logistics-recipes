@@ -163,7 +163,7 @@ for _, item in pairs(production_and_logistics_items) do
         if winner then
             local total_raw_cost = calculate_total_raw_cost(recipe)
             local winner_raw_cost = calculate_raw_material_cost(winner.name, 1)
-            local scaling_factor = total_raw_cost / calculate_raw_material_cost(winner.name, recipe.results[1].amount)            
+            local scaling_factor = total_raw_cost / calculate_raw_material_cost(winner.name, recipe.results[1].amount)
             local scaled_quantity = math.ceil(scaling_factor)
             modify_recipe(recipe, winner, scaled_quantity)
         end
