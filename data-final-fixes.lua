@@ -15,14 +15,15 @@ end
 local function is_raw_material(ingredient_name, ingredient_type)
     local raw_materials = {
         ["item"] = {
-            ["iron-ore"] = true,
-            ["copper-ore"] = true,
-            ["stone"] = true,
-            ["coal"] = true,
-            ["uranium-ore"] = true,
+            ["iron-plate"] = true,
+            ["copper-plate"] = true,
+            ["stone-brick"] = true,
+            ["steel-plate"] = true,
+            ["concrete"] = true,
+            ["plastic-bar"] = true,
+            ["processing-unit"] = true
         },
         ["fluid"] = {
-            ["water"] = true,
             ["crude-oil"] = true,
         }
     }
@@ -39,11 +40,13 @@ local function calculate_complexity(ingredient_name, visited)
     visited[ingredient_name] = true
 
     if complexity_cache[ingredient_name] then
+        visited[ingredient_name] = nil
         return complexity_cache[ingredient_name]
     end
 
-    if is_raw_material(ingredient_name) then
+    if is_raw_material(ingredient_name, "item") or is_raw_material(ingredient_name, "fluid") then
         complexity_cache[ingredient_name] = {depth = 0, quantity = 1}
+        visited[ingredient_name] = nil
         return complexity_cache[ingredient_name]
     end
 
@@ -51,6 +54,7 @@ local function calculate_complexity(ingredient_name, visited)
 
     if not recipe then
         complexity_cache[ingredient_name] = {depth = 0, quantity = 1}
+        visited[ingredient_name] = nil
         return complexity_cache[ingredient_name]
     end
 
@@ -64,60 +68,69 @@ local function calculate_complexity(ingredient_name, visited)
     end
 
     complexity_cache[ingredient_name] = {depth = max_depth + 1, quantity = total_quantity}
+    visited[ingredient_name] = nil
     return complexity_cache[ingredient_name]
 end
 
-local cost_cache = {}
-
-local function calculate_raw_material_cost(ingredient_name, amount, ingredient_type, visited)
+local function get_raw_material_vector(ingredient_name, amount, ingredient_type, visited)
     visited = visited or {}
-    
     if visited[ingredient_name] then
-        return 0
+        return {}
     end
     visited[ingredient_name] = true
 
-    if cost_cache[ingredient_name] then
-        visited[ingredient_name] = nil
-        return cost_cache[ingredient_name] * amount
-    end
-
     if is_raw_material(ingredient_name, ingredient_type) then
-        cost_cache[ingredient_name] = 1
         visited[ingredient_name] = nil
-        return amount
+        return {[ingredient_name] = amount}
     end
 
     local recipe = data.raw["recipe"][ingredient_name]
 
     if not recipe then
-        cost_cache[ingredient_name] = 1
         visited[ingredient_name] = nil
-        return amount
+        -- Treat as raw material if no recipe exists
+        return {[ingredient_name] = amount}
     end
 
-    local total_cost = 0
+    local total_output_amount = 1
+    if recipe.result_count then
+        total_output_amount = recipe.result_count
+    elseif recipe.results and recipe.results[1] and recipe.results[1].amount then
+        total_output_amount = recipe.results[1].amount
+    end
+
+    local raw_materials = {}
 
     for _, ingredient in pairs(recipe.ingredients) do
         local ingredient_amount = ingredient.amount or (ingredient.amount_min + ingredient.amount_max) / 2 or 1
         local ingredient_type = ingredient.type or "item"
-        total_cost = total_cost + calculate_raw_material_cost(ingredient.name, ingredient_amount, ingredient_type, visited)
+        local sub_raw_materials = get_raw_material_vector(ingredient.name, ingredient_amount, ingredient_type, visited)
+        for material, qty in pairs(sub_raw_materials) do
+            raw_materials[material] = (raw_materials[material] or 0) + qty * amount / total_output_amount
+        end
     end
 
-    local output_amount = 1
-    if recipe.result_count then
-        output_amount = recipe.result_count
-    elseif recipe.results and recipe.results[1] and recipe.results[1].amount then
-        output_amount = recipe.results[1].amount
-    end
-
-    total_cost = total_cost / output_amount
-
-    cost_cache[ingredient_name] = total_cost
     visited[ingredient_name] = nil
-    return total_cost * amount
+    return raw_materials
 end
 
+local function dot_product(vec1, vec2)
+    local result = 0
+    for key, val in pairs(vec1) do
+        if vec2[key] then
+            result = result + val * vec2[key]
+        end
+    end
+    return result
+end
+
+local function vector_norm_squared(vec)
+    local result = 0
+    for key, val in pairs(vec) do
+        result = result + val * val
+    end
+    return result
+end
 
 local function get_most_complex_ingredient(recipe)
     local winner = nil
@@ -139,17 +152,6 @@ local function get_most_complex_ingredient(recipe)
     return winner
 end
 
-local function calculate_total_raw_cost(recipe)
-    local total_cost = 0
-
-    for _, ingredient in pairs(recipe.ingredients) do
-        local amount = (ingredient.amount or (ingredient.amount_min + ingredient.amount_max) / 2) or 1
-        total_cost = total_cost + calculate_raw_material_cost(ingredient.name, amount)
-    end
-
-    return total_cost
-end
-
 local function modify_recipe(recipe, winner, scaled_quantity)
     recipe.ingredients = {
         {type = winner.type, name = winner.name, amount = scaled_quantity}
@@ -161,10 +163,27 @@ for _, item in pairs(production_and_logistics_items) do
     if recipe and recipe.ingredients then
         local winner = get_most_complex_ingredient(recipe)
         if winner then
-            local total_raw_cost = calculate_total_raw_cost(recipe)
-            local winner_raw_cost = calculate_raw_material_cost(winner.name, 1)
-            local scaling_factor = total_raw_cost / calculate_raw_material_cost(winner.name, recipe.results[1].amount)
-            local scaled_quantity = math.ceil(scaling_factor)
+            -- Calculate raw material vector R for the original recipe
+            local R = {}
+            for _, ingredient in pairs(recipe.ingredients) do
+                local amount = (ingredient.amount or (ingredient.amount_min + ingredient.amount_max) / 2) or 1
+                local ingredient_type = ingredient.type or "item"
+                local ingredient_vector = get_raw_material_vector(ingredient.name, amount, ingredient_type)
+                for material, qty in pairs(ingredient_vector) do
+                    R[material] = (R[material] or 0) + qty
+                end
+            end
+
+            -- Calculate raw material vector W for the winner ingredient
+            local W = get_raw_material_vector(winner.name, 1, winner.type)
+
+            -- Compute scaling factor s using mean squared error (least squares projection)
+            local numerator = dot_product(R, W)
+            local denominator = vector_norm_squared(W)
+            local s = numerator / denominator
+
+            -- Modify the recipe by replacing ingredients with the winner ingredient scaled by s
+            local scaled_quantity = math.ceil(s)
             modify_recipe(recipe, winner, scaled_quantity)
         end
     end
