@@ -13,22 +13,14 @@ for name, item in pairs(data.raw["item"]) do
 end
 
 local function is_raw_material(ingredient_name, ingredient_type)
-    local raw_materials = {
-        ["item"] = {
-            ["iron-plate"] = true,
-            ["copper-plate"] = true,
-            ["stone-brick"] = true,
-            ["steel-plate"] = true,
-            ["concrete"] = true,
-            ["plastic-bar"] = true,
-            ["processing-unit"] = true
-        },
-        ["fluid"] = {
-            ["crude-oil"] = true,
-        }
-    }
-    return raw_materials[ingredient_type] and raw_materials[ingredient_type][ingredient_name] or false
+    if ingredient_type == "item" then
+        return not data.raw["recipe"][ingredient_name]
+    elseif ingredient_type == "fluid" then
+        return not data.raw["recipe"][ingredient_name]
+    end
+    return false
 end
+
 
 local complexity_cache = {}
 
@@ -88,7 +80,6 @@ local function get_raw_material_vector(ingredient_name, amount, ingredient_type,
 
     if not recipe then
         visited[ingredient_name] = nil
-        -- Treat as raw material if no recipe exists
         return {[ingredient_name] = amount}
     end
 
@@ -163,7 +154,6 @@ for _, item in pairs(production_and_logistics_items) do
     if recipe and recipe.ingredients then
         local winner = get_most_complex_ingredient(recipe)
         if winner then
-            -- Calculate raw material vector R for the original recipe
             local R = {}
             for _, ingredient in pairs(recipe.ingredients) do
                 local amount = (ingredient.amount or (ingredient.amount_min + ingredient.amount_max) / 2) or 1
@@ -174,15 +164,12 @@ for _, item in pairs(production_and_logistics_items) do
                 end
             end
 
-            -- Calculate raw material vector W for the winner ingredient
             local W = get_raw_material_vector(winner.name, 1, winner.type)
 
-            -- Compute scaling factor s using mean squared error (least squares projection)
             local numerator = dot_product(R, W)
             local denominator = vector_norm_squared(W)
             local s = numerator / denominator
 
-            -- Modify the recipe by replacing ingredients with the winner ingredient scaled by s
             local scaled_quantity = math.ceil(s)
             modify_recipe(recipe, winner, scaled_quantity)
         end
