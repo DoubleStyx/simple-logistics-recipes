@@ -13,10 +13,8 @@ for name, item in pairs(data.raw["item"]) do
 end
 
 local function is_raw_material(ingredient_name, ingredient_type)
-    if ingredient_type == "item" then
+    if ingredient_type == "item" or ingredient_type == "fluid" then
         return not data.raw["recipe"][ingredient_name]
-    elseif ingredient_type == "fluid" then
-        return false
     end
     return false
 end
@@ -30,28 +28,28 @@ local function calculate_total_raw_cost(item_name, item_type, visited)
     visited[key] = true
 
     if is_raw_material(item_name, item_type) then
+        local weight = (item_type == "fluid" and settings.startup["fluid-unit-weight"].value) or settings.startup["item-unit-weight"].value
         visited[key] = nil
-        return 1
+        return weight
     end
 
     local recipe = data.raw["recipe"][item_name]
     if not recipe or not recipe.ingredients then
+        local weight = (item_type == "fluid" and settings.startup["fluid-unit-weight"].value) or settings.startup["item-unit-weight"].value
         visited[key] = nil
-        return 1
+        return weight
     end
 
     local total_raw_input = 0
 
     for _, ingredient in pairs(recipe.ingredients) do
         local ing_type = ingredient.type or "item"
-        if ing_type == "item" then
-            local amount = ingredient.amount
-                or (ingredient.amount_min + ingredient.amount_max) / 2
-                or 1
-            local ing_name = ingredient.name or ingredient[1]
-            local sub_cost = calculate_total_raw_cost(ing_name, ing_type, visited)
-            total_raw_input = total_raw_input + amount * sub_cost
-        end
+        local amount = ingredient.amount
+            or (ingredient.amount_min + ingredient.amount_max) / 2
+            or 1
+        local ing_name = ingredient.name or ingredient[1]
+        local sub_cost = calculate_total_raw_cost(ing_name, ing_type, visited)
+        total_raw_input = total_raw_input + amount * sub_cost
     end
 
     local total_output = 1
@@ -91,7 +89,7 @@ end
 
 local function modify_recipe(recipe, winner, total_item_raw_cost)
     local scale = total_item_raw_cost / winner.raw_cost
-    local scaled_quantity = math.floor(scale)
+    local scaled_quantity = (settings.startup["round-down"].value and math.floor(scale)) or math.ceil(scale)
 
     scaled_quantity = math.max(1, scaled_quantity)
 
