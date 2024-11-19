@@ -7,6 +7,7 @@
   "homepage": "https://mods.factorio.com/mod/Simple-Logistics-Recipes",
   "description": "Simplifies the recipes for logistics and/or production item recipes by replacing them with the most complex ingredient scaled by the raw cost.",
   "dependencies": [
-    "base"
+    "base",
+    "space-age"
   ]
 }

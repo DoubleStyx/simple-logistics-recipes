@@ -1,23 +1,16 @@
-log("Total items in data.raw[item]: " .. #data.raw["item"])
-
-local categories = {"item", "tool", "ammo", "capsule"}
-for _, category in pairs(categories) do
-    if data.raw[category] then
-        for name, item in pairs(data.raw[category]) do
-            log(category .. ": " .. name)
-        end
-    end
-end
-
 local production_and_logistics_items = {}
 
 for name, item in pairs(data.raw["item"]) do
-    if item.group and (item.group.name == "logistics" or item.group.name == "production") then
-        table.insert(production_and_logistics_items, item)
+    if item.subgroup then
+        local subgroup = data.raw["item-subgroup"][item.subgroup]
+        if subgroup and subgroup.group then
+            local group_name = subgroup.group
+            if group_name == "logistics" or group_name == "production" then
+                table.insert(production_and_logistics_items, item)
+            end
+        end
     end
 end
-
-log("Items: " .. #production_and_logistics_items)
 
 local function is_raw_material(ingredient_name)
     local raw_materials = {
@@ -70,13 +63,23 @@ end
 
 local cost_cache = {}
 
-local function calculate_raw_material_cost(ingredient_name, amount)
+local function calculate_raw_material_cost(ingredient_name, amount, visited)
+    log("uwu")
+    visited = visited or {}
+    
+    if visited[ingredient_name] then
+        return 0
+    end
+    visited[ingredient_name] = true
+    
     if cost_cache[ingredient_name] then
+        visited[ingredient_name] = nil  -- Clean up before returning
         return cost_cache[ingredient_name] * amount
     end
 
     if is_raw_material(ingredient_name) then
         cost_cache[ingredient_name] = 1
+        visited[ingredient_name] = nil
         return amount
     end
 
@@ -84,6 +87,7 @@ local function calculate_raw_material_cost(ingredient_name, amount)
 
     if not recipe then
         cost_cache[ingredient_name] = 1
+        visited[ingredient_name] = nil
         return amount
     end
 
@@ -91,7 +95,7 @@ local function calculate_raw_material_cost(ingredient_name, amount)
 
     for _, ingredient in pairs(recipe.ingredients) do
         local ingredient_amount = (ingredient.amount or (ingredient.amount_min + ingredient.amount_max) / 2) or 1
-        total_cost = total_cost + calculate_raw_material_cost(ingredient.name, ingredient_amount)
+        total_cost = total_cost + calculate_raw_material_cost(ingredient.name, ingredient_amount, visited)  -- Pass 'visited' here
     end
 
     local output_amount = 1
@@ -104,8 +108,10 @@ local function calculate_raw_material_cost(ingredient_name, amount)
     total_cost = total_cost / output_amount
 
     cost_cache[ingredient_name] = total_cost
+    visited[ingredient_name] = nil  -- Clean up before returning
     return total_cost * amount
 end
+
 
 local function get_most_complex_ingredient(recipe)
     local winner = nil
@@ -144,16 +150,14 @@ end
 
 for _, item in pairs(production_and_logistics_items) do
     local recipe = data.raw["recipe"][item.name]
-
+    log("Recipe: " .. item.name)
     if recipe and recipe.ingredients then
         local winner = get_most_complex_ingredient(recipe)
-        
         if winner then
             local total_raw_cost = calculate_total_raw_cost(recipe)
             local winner_raw_cost = calculate_raw_material_cost(winner.name, 1)
             local scaling_factor = total_raw_cost / calculate_raw_material_cost(winner.name, recipe.results[1].amount)            
             local scaled_quantity = math.ceil(scaling_factor)
-
             modify_recipe(recipe, winner, scaled_quantity)
         end
     end
