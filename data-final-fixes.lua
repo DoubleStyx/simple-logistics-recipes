@@ -16,7 +16,7 @@ local function is_raw_material(ingredient_name, ingredient_type)
     if ingredient_type == "item" then
         return not data.raw["recipe"][ingredient_name]
     elseif ingredient_type == "fluid" then
-        return not data.raw["recipe"][ingredient_name]
+        return false
     end
     return false
 end
@@ -43,13 +43,15 @@ local function calculate_total_raw_cost(item_name, item_type, visited)
     local total_raw_input = 0
 
     for _, ingredient in pairs(recipe.ingredients) do
-        local amount = ingredient.amount
-            or (ingredient.amount_min + ingredient.amount_max) / 2
-            or 1
-        local ing_name = ingredient.name or ingredient[1]
         local ing_type = ingredient.type or "item"
-        local sub_cost = calculate_total_raw_cost(ing_name, ing_type, visited)
-        total_raw_input = total_raw_input + amount * sub_cost
+        if ing_type == "item" then
+            local amount = ingredient.amount
+                or (ingredient.amount_min + ingredient.amount_max) / 2
+                or 1
+            local ing_name = ingredient.name or ingredient[1]
+            local sub_cost = calculate_total_raw_cost(ing_name, ing_type, visited)
+            total_raw_input = total_raw_input + amount * sub_cost
+        end
     end
 
     local total_output = 1
@@ -69,13 +71,15 @@ local function get_most_expensive_ingredient(recipe)
     local selected_ingredient = nil
 
     for _, ingredient in pairs(recipe.ingredients) do
-        local ing_name = ingredient.name or ingredient[1]
         local ing_type = ingredient.type or "item"
-        local raw_cost = calculate_total_raw_cost(ing_name, ing_type)
-
-        if raw_cost > highest_raw_cost then
-            highest_raw_cost = raw_cost
-            selected_ingredient = {name = ing_name, type = ing_type, raw_cost = raw_cost}
+        if ing_type == "item" then
+            local ing_name = ingredient.name or ingredient[1]
+            local raw_cost = calculate_total_raw_cost(ing_name, ing_type)
+    
+            if raw_cost > highest_raw_cost then
+                highest_raw_cost = raw_cost
+                selected_ingredient = {name = ing_name, type = ing_type, raw_cost = raw_cost}
+            end
         end
     end
 
@@ -87,8 +91,10 @@ end
 
 local function modify_recipe(recipe, winner, total_item_raw_cost)
     local scale = total_item_raw_cost / winner.raw_cost
-    local scaled_quantity = math.ceil(scale)
-    
+    local scaled_quantity = math.floor(scale)
+
+    scaled_quantity = math.max(1, scaled_quantity)
+
     local max_value = 65535
     scaled_quantity = math.min(scaled_quantity, max_value)
 
@@ -96,6 +102,7 @@ local function modify_recipe(recipe, winner, total_item_raw_cost)
         {type = winner.type, name = winner.name, amount = scaled_quantity}
     }
 end
+
 
 for _, item in pairs(production_and_logistics_items) do
     local recipe = data.raw["recipe"][item.name]
