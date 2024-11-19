@@ -20,7 +20,7 @@ local raw_materials = {
     ["uranium-ore"] = true,
     ["crude-oil"] = true,
     ["water"] = true,
-    ["wood"] = true,  -- Add other base raw materials as needed
+    ["wood"] = true,
 }
 
 local function is_raw_material(ingredient_name, ingredient_type)
