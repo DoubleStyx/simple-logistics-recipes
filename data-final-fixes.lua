@@ -1,3 +1,12 @@
+log("I love ammonia")
+
+if data.raw["fluid"]["ammonia"] then
+    log("Ammonia is present.")
+else
+    log("Ammonia is missing.")
+end
+
+
 local production_and_logistics_items = {}
 
 for name, item in pairs(data.raw["item"]) do
@@ -19,6 +28,8 @@ local function is_raw_material(ingredient_name)
         ["coal"] = true,
         ["stone"] = true,
         ["oil"] = true,
+        ["ammonia"] = true,
+        ["uranium-ore"] = true
     }
     return raw_materials[ingredient_name] or false
 end
@@ -149,6 +160,7 @@ local function modify_recipe(recipe, winner, scaled_quantity)
 end
 
 for _, item in pairs(production_and_logistics_items) do
+    log("Fetching recipe...")
     local recipe = data.raw["recipe"][item.name]
     log("Recipe: " .. item.name)
     if recipe and recipe.ingredients then
