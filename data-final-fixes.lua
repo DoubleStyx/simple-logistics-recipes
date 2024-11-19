@@ -12,19 +12,13 @@ for name, item in pairs(data.raw["item"]) do
     end
 end
 
-local raw_materials = {
-    ["iron-ore"] = true,
-    ["copper-ore"] = true,
-    ["coal"] = true,
-    ["stone"] = true,
-    ["uranium-ore"] = true,
-    ["crude-oil"] = true,
-    ["water"] = true,
-    ["wood"] = true,
-}
-
 local function is_raw_material(ingredient_name, ingredient_type)
-    return raw_materials[ingredient_name] == true
+    if ingredient_type == "item" then
+        return not data.raw["recipe"][ingredient_name]
+    elseif ingredient_type == "fluid" then
+        return not data.raw["recipe"][ingredient_name]
+    end
+    return false
 end
 
 local function calculate_total_raw_cost(item_name, item_type, visited)
@@ -92,8 +86,9 @@ end
 
 
 local function modify_recipe(recipe, winner, total_item_raw_cost)
-    local scaled_quantity = math.ceil(total_item_raw_cost)
-
+    local scale = total_item_raw_cost / winner.raw_cost
+    local scaled_quantity = math.ceil(scale)
+    
     local max_value = 65535
     scaled_quantity = math.min(scaled_quantity, max_value)
 
