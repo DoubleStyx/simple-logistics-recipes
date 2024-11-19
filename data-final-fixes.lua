@@ -21,127 +21,65 @@ local function is_raw_material(ingredient_name, ingredient_type)
     return false
 end
 
-
-local complexity_cache = {}
-
-local function calculate_complexity(ingredient_name, visited)
+local function calculate_rcr(ingredient_name, ingredient_type, visited)
     visited = visited or {}
     if visited[ingredient_name] then
-        return {depth = 0, quantity = 1}
-    end
-    visited[ingredient_name] = true
-
-    if complexity_cache[ingredient_name] then
-        visited[ingredient_name] = nil
-        return complexity_cache[ingredient_name]
-    end
-
-    if is_raw_material(ingredient_name, "item") or is_raw_material(ingredient_name, "fluid") then
-        complexity_cache[ingredient_name] = {depth = 0, quantity = 1}
-        visited[ingredient_name] = nil
-        return complexity_cache[ingredient_name]
-    end
-
-    local recipe = data.raw["recipe"][ingredient_name]
-
-    if not recipe then
-        complexity_cache[ingredient_name] = {depth = 0, quantity = 1}
-        visited[ingredient_name] = nil
-        return complexity_cache[ingredient_name]
-    end
-
-    local max_depth = 0
-    local total_quantity = 0
-
-    for _, ingredient in pairs(recipe.ingredients) do
-        local comp = calculate_complexity(ingredient.name, visited)
-        max_depth = math.max(max_depth, comp.depth)
-        total_quantity = total_quantity + comp.quantity
-    end
-
-    complexity_cache[ingredient_name] = {depth = max_depth + 1, quantity = total_quantity}
-    visited[ingredient_name] = nil
-    return complexity_cache[ingredient_name]
-end
-
-local function get_raw_material_vector(ingredient_name, amount, ingredient_type, visited)
-    visited = visited or {}
-    if visited[ingredient_name] then
-        return {}
+        return 0
     end
     visited[ingredient_name] = true
 
     if is_raw_material(ingredient_name, ingredient_type) then
         visited[ingredient_name] = nil
-        return {[ingredient_name] = amount}
+        return 1
     end
 
     local recipe = data.raw["recipe"][ingredient_name]
-
     if not recipe then
         visited[ingredient_name] = nil
-        return {[ingredient_name] = amount}
+        return 1
     end
 
-    local total_output_amount = 1
-    if recipe.result_count then
-        total_output_amount = recipe.result_count
-    elseif recipe.results and recipe.results[1] and recipe.results[1].amount then
-        total_output_amount = recipe.results[1].amount
-    end
-
-    local raw_materials = {}
+    local total_raw_input = 0
 
     for _, ingredient in pairs(recipe.ingredients) do
-        local ingredient_amount = ingredient.amount or (ingredient.amount_min + ingredient.amount_max) / 2 or 1
-        local ingredient_type = ingredient.type or "item"
-        local sub_raw_materials = get_raw_material_vector(ingredient.name, ingredient_amount, ingredient_type, visited)
-        for material, qty in pairs(sub_raw_materials) do
-            raw_materials[material] = (raw_materials[material] or 0) + qty * amount / total_output_amount
-        end
+        local amount = ingredient.amount
+            or (ingredient.amount_min + ingredient.amount_max) / 2
+            or 1
+        local sub_rcr = calculate_rcr(ingredient.name, ingredient.type or "item", visited)
+        total_raw_input = total_raw_input + amount * sub_rcr
+    end
+
+    local total_output = 1
+    if recipe.result_count then
+        total_output = recipe.result_count
+    elseif recipe.results and recipe.results[1] and recipe.results[1].amount then
+        total_output = recipe.results[1].amount
     end
 
     visited[ingredient_name] = nil
-    return raw_materials
+
+    return total_raw_input / total_output
 end
 
-local function dot_product(vec1, vec2)
-    local result = 0
-    for key, val in pairs(vec1) do
-        if vec2[key] then
-            result = result + val * vec2[key]
-        end
-    end
-    return result
-end
-
-local function vector_norm_squared(vec)
-    local result = 0
-    for key, val in pairs(vec) do
-        result = result + val * val
-    end
-    return result
-end
-
-local function get_most_complex_ingredient(recipe)
-    local winner = nil
-    local winner_complexity = nil
+local function get_highest_rcr_ingredient(recipe)
+    local highest_rcr = -math.huge
+    local selected_ingredient = nil
 
     for _, ingredient in pairs(recipe.ingredients) do
         local ingredient_name = ingredient.name or ingredient[1]
         local ingredient_type = ingredient.type or "item"
-        local comp = calculate_complexity(ingredient_name)
+        local rcr = calculate_rcr(ingredient_name, ingredient_type)
 
-        if not winner_complexity or 
-           comp.depth > winner_complexity.depth or
-           (comp.depth == winner_complexity.depth and comp.quantity > winner_complexity.quantity) then
-            winner = {name = ingredient_name, type = ingredient_type}
-            winner_complexity = comp
+        if rcr > highest_rcr then
+            highest_rcr = rcr
+            selected_ingredient = {name = ingredient_name, type = ingredient_type}
         end
     end
 
-    return winner
+    return selected_ingredient, highest_rcr
 end
+
+
 
 local function modify_recipe(recipe, winner, scaled_quantity)
     recipe.ingredients = {
@@ -152,25 +90,9 @@ end
 for _, item in pairs(production_and_logistics_items) do
     local recipe = data.raw["recipe"][item.name]
     if recipe and recipe.ingredients then
-        local winner = get_most_complex_ingredient(recipe)
+        local winner, highest_rcr = get_highest_rcr_ingredient(recipe)
         if winner then
-            local R = {}
-            for _, ingredient in pairs(recipe.ingredients) do
-                local amount = (ingredient.amount or (ingredient.amount_min + ingredient.amount_max) / 2) or 1
-                local ingredient_type = ingredient.type or "item"
-                local ingredient_vector = get_raw_material_vector(ingredient.name, amount, ingredient_type)
-                for material, qty in pairs(ingredient_vector) do
-                    R[material] = (R[material] or 0) + qty
-                end
-            end
-
-            local W = get_raw_material_vector(winner.name, 1, winner.type)
-
-            local numerator = dot_product(R, W)
-            local denominator = vector_norm_squared(W)
-            local s = numerator / denominator
-
-            local scaled_quantity = math.ceil(s)
+            local scaled_quantity = math.ceil(highest_rcr)
             modify_recipe(recipe, winner, scaled_quantity)
         end
     end
