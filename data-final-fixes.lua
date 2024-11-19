@@ -1,12 +1,3 @@
-log("I love ammonia")
-
-if data.raw["fluid"]["ammonia"] then
-    log("Ammonia is present.")
-else
-    log("Ammonia is missing.")
-end
-
-
 local production_and_logistics_items = {}
 
 for name, item in pairs(data.raw["item"]) do
