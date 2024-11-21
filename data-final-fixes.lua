@@ -106,11 +106,15 @@ local function get_most_expensive_ingredient(recipe)
 end
 
 local function modify_recipe(recipe, winner, total_item_raw_cost)
-    local scale = total_item_raw_cost / winner.raw_cost
+    local total_output = 1
+    if recipe.results then
+        total_output = recipe.results[1].amount
+    end
+
+    local scale = (total_item_raw_cost / winner.raw_cost) * total_output
     local scaled_quantity = (settings.startup["round-down"].value and math.floor(scale)) or math.ceil(scale)
 
     scaled_quantity = math.max(1, scaled_quantity)
-
     local max_value = 65535
     scaled_quantity = math.min(scaled_quantity, max_value)
 
@@ -118,6 +122,7 @@ local function modify_recipe(recipe, winner, total_item_raw_cost)
         {type = winner.type, name = winner.name, amount = scaled_quantity}
     }
 end
+
 
 for recipe_name, recipe in pairs(simplified_recipes) do
     if recipe and recipe.ingredients then
