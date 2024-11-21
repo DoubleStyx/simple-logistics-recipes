@@ -1,45 +1,40 @@
-local simplified_items = {}
+local simplified_recipes = {}
 
-for item_name, item in pairs(data.raw["item"]) do
-    local should_include = false
+local recipes = data.raw["recipe"]
+for recipe_name, recipe in pairs(recipes) do
+    local should_include = true
 
-    log("Item name: " .. item_name)
+    local products = recipe.results
 
-    local subgroup_name = item.subgroup or ""
-    local subgroup = data.raw["item-subgroup"][subgroup_name] or {}
-    log("Item subgroup name: " .. subgroup_name)
-
-    local group_name = subgroup.group or ""
-    local group_setting = settings.startup[group_name] or false
-    log("Item group name: " .. group_name)
-
-    if group_setting then
-        should_include = true
-        log("Item's recipe(s) will be simplified.")
-    else
-        log("Item's recipe(s) will not be simplified.")
+    if products then
+        for _, product in pairs(products) do
+            local product_name = product.name
+            log("Product name: " .. product_name)
+            local product_type = product.type
+            if product_type == "item" then
+                local item = data.raw["item"][product_name]
+                if item then
+                    local subgroup_name = item.subgroup
+                    if subgroup_name then
+                        local subgroup = data.raw["item-subgroup"][subgroup_name]
+                        if subgroup then
+                            local group_name = subgroup.group
+                            if group_name == "intermediate-products" then
+                                should_include = false
+                                log("Excluded product.")
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+        end
     end
 
     if should_include then
-        simplified_items[item_name] = item
+        simplified_recipes[recipe_name] = recipe
     end
 end
-
-local simplified_recipes = {}
-
-for recipe_name, recipe in pairs(data.raw["recipe"]) do
-    local products = recipe.results or {}
-    
-    for _, product in pairs(products) do
-        local product_name = product.name or ""
-        
-        if simplified_items[product_name] then
-            simplified_recipes[recipe_name] = recipe
-            break  
-        end
-    end
-end
-
 
 local function is_raw_material(ingredient_name, ingredient_type)
     return not data.raw["recipe"][ingredient_name]
@@ -110,9 +105,6 @@ local function get_most_expensive_ingredient(recipe)
     return selected_ingredient
 end
 
-
-
-
 local function modify_recipe(recipe, winner, total_item_raw_cost)
     local scale = total_item_raw_cost / winner.raw_cost
     local scaled_quantity = (settings.startup["round-down"].value and math.floor(scale)) or math.ceil(scale)
@@ -126,7 +118,6 @@ local function modify_recipe(recipe, winner, total_item_raw_cost)
         {type = winner.type, name = winner.name, amount = scaled_quantity}
     }
 end
-
 
 for recipe_name, recipe in pairs(simplified_recipes) do
     if recipe and recipe.ingredients then
