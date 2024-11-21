@@ -1,22 +1,48 @@
-local production_and_logistics_items = {}
+local simplified_items = {}
 
-for name, item in pairs(data.raw["item"]) do
-    if item.subgroup then
-        local subgroup = data.raw["item-subgroup"][item.subgroup]
-        if subgroup and subgroup.group then
-            local group_name = subgroup.group
-            if group_name == "logistics" or group_name == "production" then
-                table.insert(production_and_logistics_items, item)
-            end
+for item_name, item in pairs(data.raw["item"]) do
+    local should_include = false
+
+    log("Item name: " .. item_name)
+
+    local subgroup_name = item.subgroup or ""
+    local subgroup = data.raw["item-subgroup"][subgroup_name] or {}
+    log("Item subgroup name: " .. subgroup_name)
+
+    local group_name = subgroup.group or ""
+    local group_setting = settings.startup[group_name] or false
+    log("Item group name: " .. group_name)
+
+    if group_setting then
+        should_include = true
+        log("Item's recipe(s) will be simplified.")
+    else
+        log("Item's recipe(s) will not be simplified.")
+    end
+
+    if should_include then
+        simplified_items[item_name] = item
+    end
+end
+
+local simplified_recipes = {}
+
+for recipe_name, recipe in pairs(data.raw["recipe"]) do
+    local products = recipe.results or {}
+    
+    for _, product in pairs(products) do
+        local product_name = product.name or ""
+        
+        if simplified_items[product_name] then
+            simplified_recipes[recipe_name] = recipe
+            break  
         end
     end
 end
 
+
 local function is_raw_material(ingredient_name, ingredient_type)
-    if ingredient_type == "item" or ingredient_type == "fluid" then
-        return not data.raw["recipe"][ingredient_name]
-    end
-    return false
+    return not data.raw["recipe"][ingredient_name]
 end
 
 local function calculate_total_raw_cost(item_name, item_type, visited)
@@ -102,10 +128,9 @@ local function modify_recipe(recipe, winner, total_item_raw_cost)
 end
 
 
-for _, item in pairs(production_and_logistics_items) do
-    local recipe = data.raw["recipe"][item.name]
+for recipe_name, recipe in pairs(simplified_recipes) do
     if recipe and recipe.ingredients then
-        local total_item_raw_cost = calculate_total_raw_cost(item.name, "item")
+        local total_item_raw_cost = calculate_total_raw_cost(recipe_name, "item")
 
         local winner = get_most_expensive_ingredient(recipe)
         if winner then
