@@ -20,7 +20,7 @@ for recipe_name, recipe in pairs(recipes) do
                         if subgroup then
                             local group_name = subgroup.group
                             if group_name == "intermediate-products" then
-                                should_include = true -- force true uwu
+                                should_include = false
                                 log("Excluded product.")
                                 break
                             end
